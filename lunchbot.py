@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 from lxml import html
 from slackclient import SlackClient
@@ -45,26 +45,17 @@ def parse_restaurant(data):
     tree = html.fromstring(page.text)
     msg = '{}:'.format(data['name'])
     for menu in data['menus']:
-        _menu = tree.xpath(menu['xpath'].format(datetime.datetime.today().weekday()+menu['day_offset']))[0].strip().encode('utf-8')
-        msg += '\n- {}'.format(_menu)
+        day_offset = menu['day_offset'] if 'day_offset' in menu else 0
+        day_multiply = menu['day_multiply'] if 'day_multiply' in menu else 1
+        xpath = menu['xpath']
+        if '{}' in xpath:
+            xpath = xpath.format(datetime.datetime.today().weekday()*day_multiply+day_offset)
+
+        _menu = tree.xpath(xpath)
+        if len(_menu) > 0:
+            _menu = _menu[0].strip()
+            msg += '\n- {}'.format(_menu)
     return msg
-
-def parse_dabba():
-    return 'http://nam-nam.at/wp-content/uploads/Wochenkarten/Nam-Nam-Wochenkarte-Dabba.pdf'
-
-def parse_swingkitchen():
-    page = requests.get('https://www.swingkitchen.com/')
-    tree = html.fromstring(page.text)
-    menu = tree.xpath('//div[42]/div/div[2]/h5/a/span/text()')[0].strip().encode('utf-8')
-    return '{} @ Swing Kitchen'.format(menu)
-
-def parse_tewa():
-    page = requests.get('http://tewa-naschmarkt.at/tagesteller/')
-    tree = html.fromstring(page.text)
-    menu1 = tree.xpath('//tr[{}]/td[1]/strong/text()'.format(datetime.datetime.today().weekday()*2+4))[0].strip().encode('utf-8')
-    menu2 = tree.xpath('//tr[{}]/td[1]/strong/text()'.format(datetime.datetime.today().weekday()*2+5))
-    menu2 = " or {}".format(menu2[0].strip().encode('utf-8')) if len(menu2) > 0 else ""
-    return '{}{} @ http://tewa-naschmarkt.at/'.format(menu1, menu2)
 
 def parse_bot_commands(slack_events):
     """
@@ -93,24 +84,6 @@ def parse_bot_commands(slack_events):
                         channel=event["channel"],
                         text=parse_restaurant(restaurant)
                     )
-                slack_client.api_call(
-                    "chat.postMessage",
-                    channel=event["channel"],
-                    text="U know what? There's a special: {}".format(parse_swingkitchen())
-                )
-                slack_client.api_call(
-                    "chat.postMessage",
-                    channel=event["channel"],
-                    text="Did you already check out {}?".format(parse_dabba())
-                )
-                slack_client.api_call(
-                    "chat.postMessage",
-                    channel=event["channel"],
-                    text="Another suggestion: {}?".format(parse_tewa())
-                )
-#            user_id, message = parse_direct_mention(event["text"])
-#            if user_id == starterbot_id:
-#                return message, event["channel"]
     return None, None
 
 def handle_command(command, channel):
