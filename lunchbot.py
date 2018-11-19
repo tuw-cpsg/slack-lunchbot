@@ -40,27 +40,15 @@ KEYWORD_REGEX = "(mittag|essen|hunger|hungrig|hungry)"
 THANKS_REGEX = "(dank|thanks|thx)"
 MENTION_REGEX = ".*{}|{}.*"
 
-def parse_teigwareat():
-    page = requests.get('http://teigware.at/')
+def parse_restaurant(data):
+    print yaml.dump(data)
+    page = requests.get(data['url'])
     tree = html.fromstring(page.text)
-    menu1 = tree.xpath('//tr[{}]/td[2]/text()'.format(datetime.datetime.today().weekday()+3))[0].strip().encode('utf-8')
-    menu2 = tree.xpath('//tr[{}]/td[4]/text()'.format(datetime.datetime.today().weekday()+3))[0].strip().encode('utf-8')
-    return '{} or {} @ http://teigware.at'.format(menu1, menu2)
-
-def parse_mensa():
-    page = requests.get('http://menu.mensen.at/index/index/locid/9')
-    tree = html.fromstring(page.text)
-    menu1 = tree.xpath('//div[{}]/div[2]/div[1]/div[6]/p/strong/text()'.format(datetime.datetime.today().weekday()+1))[0].strip().encode('utf-8')
-    menu2 = tree.xpath('//div[{}]/div[2]/div[2]/div[6]/p/strong/text()'.format(datetime.datetime.today().weekday()+1))[0].strip().encode('utf-8')
-    menu3 = tree.xpath('//div[{}]/div[2]/div[3]/div[6]/p/strong/text()'.format(datetime.datetime.today().weekday()+1))[0].strip().encode('utf-8')
-    return '{}, {} or {} @ Mensa'.format(menu1, menu2, menu3)
-
-def parse_schroedinger():
-    page = requests.get('http://menu.mensen.at/index/index/locid/52')
-    tree = html.fromstring(page.text)
-    menu1 = tree.xpath('//div[{}]/div[2]/div[1]/div[6]/p/strong/text()'.format(datetime.datetime.today().weekday()+1))[0].strip().encode('utf-8')
-    menu2 = tree.xpath('//div[{}]/div[2]/div[2]/div[6]/p/strong/text()'.format(datetime.datetime.today().weekday()+1))[0].strip().encode('utf-8')
-    return '{} or {} @ Cafe Schroedinger'.format(menu1, menu2)
+    msg = '{}:'.format(data['name'])
+    for menu in data['menus']:
+        _menu = tree.xpath(menu['xpath'].format(datetime.datetime.today().weekday()+menu['day_offset']))[0].strip().encode('utf-8')
+        msg += '\n- {}'.format(_menu)
+    return msg
 
 def parse_dabba():
     return 'http://nam-nam.at/wp-content/uploads/Wochenkarten/Nam-Nam-Wochenkarte-Dabba.pdf'
@@ -100,21 +88,12 @@ def parse_bot_commands(slack_events):
                     channel=event["channel"],
                     text="I'm hungry too..\nlet's get some lunch!"
                 )
-                slack_client.api_call(
-                    "chat.postMessage",
-                    channel=event["channel"],
-                    text="What about {}?".format(parse_teigwareat())
-                )
-                slack_client.api_call(
-                    "chat.postMessage",
-                    channel=event["channel"],
-                    text="Or do you like {} better?".format(parse_mensa())
-                )
-                slack_client.api_call(
-                    "chat.postMessage",
-                    channel=event["channel"],
-                    text="This one sounds good as well: {}".format(parse_schroedinger())
-                )
+                for restaurant in config['restaurants']:
+                    slack_client.api_call(
+                        "chat.postMessage",
+                        channel=event["channel"],
+                        text=parse_restaurant(restaurant)
+                    )
                 slack_client.api_call(
                     "chat.postMessage",
                     channel=event["channel"],
