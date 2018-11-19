@@ -11,7 +11,7 @@ import time
 import yaml
 
 config = None
-for loc in os.curdir, os.path.expanduser('~'), '/etc/lunchbot':
+for loc in os.getcwd(), os.path.expanduser('~'), '/etc/lunchbot', os.path.dirname(os.path.abspath(__file__)):
     try:
         with open(os.path.join(loc,'config.yaml'), 'r') as stream:
             try:
