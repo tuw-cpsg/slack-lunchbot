@@ -41,7 +41,6 @@ THANKS_REGEX = "(dank|thanks|thx)"
 MENTION_REGEX = ".*{}|{}.*"
 
 def parse_restaurant(data):
-    print yaml.dump(data)
     page = requests.get(data['url'])
     tree = html.fromstring(page.text)
     msg = '{}:'.format(data['name'])
