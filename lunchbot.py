@@ -11,7 +11,7 @@ import time
 import yaml
 
 config = None
-for loc in os.curdir, os.path.expanduser('~'), '/etc/lunchbot':
+for loc in os.getcwd(), os.path.expanduser('~'), '/etc/lunchbot', os.path.dirname(os.path.abspath(__file__)):
     try:
         with open(os.path.join(loc,'config.yaml'), 'r') as stream:
             try:
@@ -34,11 +34,9 @@ starterbot_id = None
 
 # constants
 RTM_READ_DELAY = 3 # 1 second delay between reading from RTM
-EXAMPLE_COMMAND = "do"
-MENTION_REGEX = "^<@(|[WU].+?)>(.*)"
+MENTION_REGEX = "^(<@{}.*>|@?{})(.*)"
 KEYWORD_REGEX = "(mittag|essen|hunger|hungrig|hungry)"
 THANKS_REGEX = "(dank|thanks|thx)"
-MENTION_REGEX = ".*{}|{}.*"
 
 def parse_restaurant(data):
     page = requests.get(data['url'])
@@ -51,13 +49,36 @@ def parse_restaurant(data):
         if '{}' in xpath:
             xpath = xpath.format(datetime.datetime.today().weekday()*day_multiply+day_offset)
 
-        _menu = tree.xpath(xpath)
+        _menu = re.sub('\s+', ' ', ''.join(tree.xpath(xpath)))
         if len(_menu) > 0:
-            _menu = _menu[0].strip()
+            #_menu = _menu[0].strip()
             msg += '\n- {}'.format(_menu)
     return msg
 
 def parse_bot_commands(slack_events):
+    """
+        Parses a list of events coming from the Slack RTM API to find bot commands.
+        If a bot command is found, this function returns a tuple of command and channel.
+        If its not found, then this function returns None, None.
+    """
+    for event in slack_events:
+        if event["type"] == "message" and not "subtype" in event:
+            print(event["text"])
+            user_id, message = parse_direct_mention(event["text"])
+            if user_id:
+                return message, event["channel"]
+    return None, None
+
+def parse_direct_mention(message_text):
+    """
+        Finds a direct mention (a mention that is at the beginning) in message text
+        and returns the user ID which was mentioned. If there is no direct mention, returns None
+    """
+    matches = re.search(MENTION_REGEX.format(starterbot_id, starterbot_user), message_text)
+    # the first group contains the username, the second group contains the remaining message
+    return (matches.group(1), matches.group(2).strip()) if matches else (None, None)
+
+def parse_bot_commandsi(slack_events):
     """
         Parses a list of events coming from the Slack RTM API to find bot commands.
         If a bot command is found, this function returns a tuple of command and channel.
@@ -90,14 +111,21 @@ def handle_command(command, channel):
     """
         Executes bot command if the command is known
     """
+    print("handle_command({}, {})".format(command, channel))
     # Default response is help text for the user
-    default_response = "Not sure what you mean. Try *{}*.".format(EXAMPLE_COMMAND)
+    default_response = "Not sure what you mean.."
 
     # Finds and executes the given command, filling in response
     response = None
+
     # This is where you start to implement more commands!
-    if command.startswith(EXAMPLE_COMMAND):
-        response = "Sure...write some more code then I can do that!"
+    if re.search(KEYWORD_REGEX, command, re.IGNORECASE):
+        response = "I'm hungry too.. \n let's get some lunch!"
+        for restaurant in config['restaurants']:
+            response += "\n" + parse_restaurant(restaurant)
+
+    if re.search(THANKS_REGEX, command, re.IGNORECASE):
+        response = "You're welcome!"
 
     # Sends the response back to the channel
     slack_client.api_call(
@@ -107,16 +135,30 @@ def handle_command(command, channel):
     )
 
 if __name__ == "__main__":
-    if slack_client.rtm_connect(with_team_state=False):
-        print("Lunch Bot connected and hungry!")
-        # Read bot's user ID by calling Web API method `auth.test`
-        starterbot_id = slack_client.api_call("auth.test")["user_id"]
-        starterbot_user = slack_client.api_call("auth.test")["user"]
+    connect_counter = 0;
+    while True:
+        if slack_client.rtm_connect(with_team_state=False):
+            print("Lunch Bot connected and hungry!")
+            connect_counter = 0;
+            # Read bot's user ID by calling Web API method `auth.test`
+            starterbot_id = slack_client.api_call("auth.test")["user_id"]
+            starterbot_user = slack_client.api_call("auth.test")["user"]
+    
+            try:
+                while True:
+                    command, channel = parse_bot_commands(slack_client.rtm_read())
+                    if command:
+                        handle_command(command, channel)
+                    time.sleep(RTM_READ_DELAY)
+            except Exception as e:
+                print("Error in parse_bot_commands: {}".format(str(e)))
 
-        while True:
-            command, channel = parse_bot_commands(slack_client.rtm_read())
-            if command:
-                handle_command(command, channel)
-            time.sleep(RTM_READ_DELAY)
-    else:
-        print("Connection failed. Exception traceback printed above.")
+
+        else:
+            print("Connection failed. Exception traceback printed above.")
+
+        connect_counter = connect_counter + 1
+        time.sleep(60)
+
+        if(connect_counter > 3):
+            quit()
